@@ -70,6 +70,11 @@ jobs:
           image: ${{ inputs.image }}:${{ github.sha }}
           fail-build: true
           severity-cutoff: critical
+          # Fail only on vulnerabilities with an available fix: python:3.12-slim's
+          # Debian base carries "won't fix" criticals (libc, perl) that no action
+          # of ours can resolve. The real reduction is the distroless rebase
+          # (roadmap); loosening severity-cutoff is NOT the answer.
+          only-fixed: true
           output-format: table
 
       # ---------------------------------------------------------------------
