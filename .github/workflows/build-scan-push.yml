@@ -1,0 +1,126 @@
+name: build-scan-push
+
+# Reusable: build an amd64 image, produce an SBOM, scan it, and — only once a
+# registry exists — push it. Called by the per-service release workflows.
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: Directory name under apps/ (e.g. "api").
+        required: true
+        type: string
+      image:
+        description: Image name, without registry or tag (e.g. "api").
+        required: true
+        type: string
+    outputs:
+      digest:
+        description: >-
+          Image digest of the pushed image. Empty when the push is skipped
+          (no REGISTRY variable set), so callers must check before using it.
+        value: ${{ jobs.build.outputs.digest }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ inputs.image }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # WIF only; unused while the push steps are skipped
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # amd64 only: every target (GKE nodes, Cloud Run) is x86, so building
+      # arm64 would just double the build time.
+      - name: Build image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: apps/${{ inputs.service }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ inputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # SBOM of the image that was actually built, kept as a workflow artifact
+      # so a later vulnerability disclosure can be traced to a build.
+      - name: Generate SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: ${{ inputs.image }}:${{ github.sha }}
+          format: spdx-json
+          output-file: ${{ inputs.image }}.spdx.json
+          artifact-name: sbom-${{ inputs.image }}.spdx.json
+          upload-artifact: true
+
+      # Gate: a critical vulnerability stops the release before it is pushed.
+      - name: Scan image
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ${{ inputs.image }}:${{ github.sha }}
+          fail-build: true
+          severity-cutoff: critical
+          output-format: table
+
+      # ---------------------------------------------------------------------
+      # Push. Every step below is guarded on the repo variables that only
+      # exist once the GCP project and Artifact Registry are created, so the
+      # pipeline stays green before any cloud exists. Set REGISTRY,
+      # WIF_PROVIDER and WIF_SERVICE_ACCOUNT to turn the push on.
+      # ---------------------------------------------------------------------
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: auth
+        if: vars.REGISTRY != '' && vars.WIF_PROVIDER != '' && vars.WIF_SERVICE_ACCOUNT != ''
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          # Short-lived token for the registry login; no long-lived JSON key.
+          token_format: access_token
+
+      - name: Log in to registry
+        if: vars.REGISTRY != '' && steps.auth.outcome == 'success'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ vars.REGISTRY }}
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      # Second build-push invocation rather than one push+load step: buildx
+      # cannot attach provenance/SBOM attestations while also loading into the
+      # docker daemon. The gha cache makes this a near no-op replay.
+      - name: Push image
+        id: push
+        if: vars.REGISTRY != '' && steps.auth.outcome == 'success'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: apps/${{ inputs.service }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ vars.REGISTRY }}/${{ inputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          provenance: mode=max
+          sbom: true
+
+      - name: Summarise
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          REGISTRY: ${{ vars.REGISTRY }}
+          IMAGE: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DIGEST}" ]; then
+            echo "pushed ${REGISTRY}/${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "push skipped: no REGISTRY / WIF variables set" >> "$GITHUB_STEP_SUMMARY"
+          fi

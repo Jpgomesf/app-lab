@@ -1,0 +1,3 @@
+# Dev-only tooling, pinned so local runs and CI agree. Renovate keeps it current.
+ruff==0.16.5
+pytest==8.4.2

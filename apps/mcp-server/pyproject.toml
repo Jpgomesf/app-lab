@@ -1,0 +1,22 @@
+[project]
+name = "mcp-server"
+version = "0.1.0"
+description = "Model Context Protocol server"
+requires-python = ">=3.12"
+# Intentionally empty: the stand-in is stdlib-only. The real streamable-HTTP
+# MCP server will add its dependencies here.
+dependencies = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM"]
+
+[tool.pytest.ini_options]
+# Keeps the src layout importable without an editable install.
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"

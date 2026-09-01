@@ -1,0 +1,68 @@
+name: release-mcp-server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/mcp-server/**
+      - .github/workflows/release-mcp-server.yml
+      - .github/workflows/build-scan-push.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mcp-server
+  # A release is never cancelled mid-flight; queued runs wait their turn.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: $/.github/workflows/build-scan-push.yml
+    permissions:
+      contents: read
+      id-token: write # WIF only; unused while REGISTRY is unset
+    with:
+      service: mcp-server
+      image: mcp-server
+
+  # GitOps hand-off: bump the image in the infra repo's dev overlay and let
+  # Argo CD sync it. Guarded on REGISTRY so it stays dormant pre-cloud, and on
+  # a non-empty digest so it never bumps to an image that was not pushed.
+  bump-manifests:
+    name: bump dev overlay
+    needs: build
+    if: vars.REGISTRY != '' && needs.build.outputs.digest != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # TODO: implement once a cross-repo credential exists. Prefer a GitHub
+      # App installation token (short-lived, scoped to the infra repo's
+      # contents) over a classic PAT, stored as a repo secret. Nothing is
+      # wired up yet — no secrets are configured. The steps would be:
+      #
+      #   - uses: actions/checkout@<pinned sha> # vX.Y.Z
+      #     with:
+      #       repository: <owner>/infra-lab
+      #       token: <the infra-repo token secret>
+      #       path: infra
+      #       persist-credentials: false
+      #   - name: Bump and push
+      #     env:
+      #       REGISTRY: ${{ vars.REGISTRY }}
+      #       DIGEST: ${{ needs.build.outputs.digest }}
+      #     run: |
+      #       cd infra/k8s/overlays/dev
+      #       kustomize edit set image mcp-server="${REGISTRY}/mcp-server@${DIGEST}"
+      #       git -C "${GITHUB_WORKSPACE}/infra" commit -am "chore(dev): bump mcp-server"
+      #       git -C "${GITHUB_WORKSPACE}/infra" push
+      #
+      # Argo CD watches k8s/overlays/dev and rolls the Deployment out.
+      - name: Bump mcp-server image in the infra repo (stub)
+        env:
+          REGISTRY: ${{ vars.REGISTRY }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          echo "would bump k8s/overlays/dev to ${REGISTRY}/mcp-server@${DIGEST}"

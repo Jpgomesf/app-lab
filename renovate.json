@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "pip_requirements": {
+    "enabled": true
+  },
+  "pep621": {
+    "enabled": true
+  },
+  "uv": {
+    "enabled": true
+  },
+  "dockerfile": {
+    "enabled": true
+  }
+}
