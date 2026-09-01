@@ -37,8 +37,10 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY alembic.ini ./
 COPY src/ ./src/
 # Installs the project itself; migrations live inside the package, so they
-# land in the venv with it.
-RUN uv sync --frozen --no-dev
+# land in the venv with it. --no-editable is load-bearing: the default
+# editable install writes a path reference to /src into the venv, and /src
+# does not exist in the runtime stage — the venv must be self-contained.
+RUN uv sync --frozen --no-dev --no-editable
 
 # --------------------------------------------------------------------------
 # runtime

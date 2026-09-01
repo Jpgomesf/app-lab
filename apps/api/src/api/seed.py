@@ -41,7 +41,7 @@ async def run() -> int:
         factory = create_session_factory(engine)
         async with factory() as session, session.begin():
             created = await seed_session(session)
-    logger.info("seed complete", extra={"event": "seed_done", "created": created})
+    logger.info("seed complete", extra={"event": "seed_done", "created_count": created})
     return created
 
 
