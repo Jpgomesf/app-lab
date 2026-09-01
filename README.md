@@ -6,34 +6,47 @@ source, tests, images and the build pipeline. It owns no infrastructure — the
 Kubernetes manifests, overlays and Terraform live in the infra repo, and the
 only thing that crosses the boundary is an image reference.
 
-Both services are Python and, for now, **stdlib-only**: no third-party runtime
-dependencies at all. They answer `GET /` and `GET /healthz` with
-`{"service": "...", "status": "ok"}` and read `PORT` from the environment
-(default `8080`). That is enough to exercise the image build, the scan gate,
-the health probes and the overlay wiring before any framework is chosen.
+Both services are Python and both read `PORT` from the environment (default
+`8080`), but they are at different stages.
 
-The MCP server is explicitly a stand-in. The real one must speak **streamable
-HTTP** and target the **stateless MCP spec >= 2026-07-28**, so any replica can
-serve any request and the Deployment can scale horizontally.
+**`api` is real.** FastAPI on Postgres via SQLAlchemy async and asyncpg, schema
+managed by Alembic, OpenTelemetry traces when a collector is configured, JSON
+logs, and a `pyright` gate in CI. It is a **uv** project: compatible ranges in
+`pyproject.toml`, exact versions in a committed `uv.lock`. Configuration is
+environment-only and validated at import, so a bad value stops the container
+rather than surfacing later as a 500. `GET /healthz` touches nothing —
+liveness must not depend on the database — while `GET /readyz` runs a
+`SELECT 1` with a 1s budget when `DATABASE_URL` is set. Details, including how
+to run it against the lab database, are in [`apps/api/README.md`](apps/api/README.md).
+
+**`mcp-server` is still a stand-in**: stdlib-only, answering `GET /` and
+`GET /healthz` with `{"service": "...", "status": "ok"}`. That is enough to
+keep exercising the image build, the scan gate, the probes and the overlay
+wiring. The real one must speak **streamable HTTP** and target the **stateless
+MCP spec >= 2026-07-28**, so any replica can serve any request and the
+Deployment can scale horizontally.
 
 ## Layout
 
 ```
 apps/
-  api/                     HTTP API service
-    src/api/main.py        http.server app; build_response() is the unit under test
-    tests/test_main.py
-    pyproject.toml         project metadata + ruff + pytest config
-    Dockerfile             python:3.12-slim, non-root, EXPOSE 8080
-  mcp-server/              same shape, package `mcp_server`
+  api/                     FastAPI service — see apps/api/README.md
+    src/api/               config, routes/, repository, models, migrations/
+    tests/                 unit (no DB) + integration (needs TEST_DATABASE_URL)
+    pyproject.toml         deps + ruff + pytest + pyright config
+    uv.lock                committed; the exact versions CI installs
+    alembic.ini            local CLI only; the cluster uses `python -m api.migrate`
+    Dockerfile             multi-stage uv build, digest-pinned base, uid 65532
+  mcp-server/              stdlib stand-in, package `mcp_server`
 .github/workflows/
-  ci.yml                   lint + format + test, matrix over the changed apps
+  ci.yml                   per-app checks, matrix over the changed apps
   build-scan-push.yml      reusable: build -> SBOM -> scan -> (guarded) push
   release-api.yml          main-branch release for api
   release-mcp-server.yml   main-branch release for mcp-server
   zizmor.yml               static analysis of the workflows themselves
-Makefile                   lint / test / docker-build
-requirements-dev.txt       pinned ruff + pytest, shared by local and CI
+AGENTS.md                  commands and conventions, for humans and agents
+Makefile                   dev / lint / typecheck / test / docker-build
+requirements-dev.txt       pinned ruff + pytest + uv, shared by local and CI
 renovate.json
 ```
 
@@ -44,20 +57,26 @@ would quietly couple their dependency sets.
 ## Local development
 
 ```sh
-make dev            # one-time: create .venv and install pinned ruff + pytest
-make lint           # ruff check + ruff format --check across both apps
-make test           # pytest per app
+make dev            # one-time: .venv with pinned ruff/pytest/uv, plus `uv sync` for api
+make lint           # ruff check + ruff format --check on both apps, then pyright on api
+make test           # pytest per app (api through its uv environment)
 make lint test      # what CI runs
 ```
 
-`make lint` and `make test` prefer `.venv/bin/python` when it exists and fall
-back to whatever `python3` is on `PATH`, so the global pre-commit hook works
-either way. **Run `make lint` before every commit.**
+**Run `make lint` before every commit.**
+
+`ruff` runs from `.venv/bin/python` when it exists and falls back to whatever
+`python3` is on `PATH`, so the global pre-commit hook works either way. The
+`api` legs need that app's locked dependencies: they use `.venv/bin/uv`, then
+any `uv` on `PATH`, then `apps/api/.venv` directly, and only fail — with an
+instruction to run `make dev` — when none of the three is there. `pyright`
+covers `apps/api` only; `mcp-server` joins when the real server lands.
 
 Run a service directly:
 
 ```sh
-cd apps/api && PYTHONPATH=src PORT=8080 python -m api.main
+cd apps/api && uv run uvicorn api.main:app --port 8080   # no DB: /v1/items → 503
+cd apps/mcp-server && PYTHONPATH=src PORT=8081 python -m mcp_server.main
 curl -s localhost:8080/healthz
 ```
 
@@ -91,8 +110,20 @@ images:
     newTag: dev
 ```
 
-(one `images:` entry per container; the container ports in the base manifests
-are `80` and will need to become `8080` when the placeholder is retired).
+(one `images:` entry per container.) The base manifests already use
+`containerPort: 8080`, which is the port both services listen on, so the swap
+really is image-only — with two caveats to fix in the infra repo when the real
+`api` image goes in, neither of which belongs in this repo:
+
+- the `args: ["--port", "8080"]` on the container is a `traefik/whoami` flag
+  and must be dropped; this image takes `PORT` from the environment;
+- the readiness probe points at `/` and there is no liveness probe. `api`
+  serves `/` for exactly this reason, but the probes it is built for are
+  `/healthz` for liveness and `/readyz` for readiness.
+
+Also worth checking before it runs for real: the base Deployment caps `api` at
+`128Mi`, which was sized for a stand-in. FastAPI plus SQLAlchemy plus the OTel
+SDK is a much larger resident set, and the failure mode is an OOMKill loop.
 
 In dev/prod the same mechanism is driven by CI instead of by hand: the release
 workflow pushes `REGISTRY/<image>:<sha>` and bumps the `images:` block in
@@ -104,9 +135,21 @@ workflow pushes `REGISTRY/<image>:<sha>` and bumps the `images:` block in
 `paths:` filter is per-workflow rather than per-matrix-leg, so a `changes` job
 diffs against the PR base (or the previous `main` commit) and emits the list of
 affected apps as a JSON matrix; a change to `ci.yml` or `requirements-dev.txt`
-selects both. Each leg installs the pinned tooling and runs `ruff check`,
-`ruff format --check` and `pytest`. Concurrency is grouped by ref with
-`cancel-in-progress` on pull requests only.
+selects both. Concurrency is grouped by ref with `cancel-in-progress` on pull
+requests only.
+
+The two legs run different toolchains but stay in one matrix so the required
+status checks keep the names the branch ruleset asks for (`check (api)`,
+`check (mcp-server)`):
+
+- **api** — `astral-sh/setup-uv` pinned to the same uv as
+  `requirements-dev.txt`, then `uv sync --frozen` (which fails if `uv.lock` and
+  `pyproject.toml` have drifted, rather than quietly resolving something else),
+  then `ruff check`, `ruff format --check`, **`pyright`** and `pytest`. The
+  cache key is `apps/api/uv.lock`. `TEST_DATABASE_URL` is unset, so the
+  integration tests skip and CI needs no service container.
+- **mcp-server** — `setup-python` plus the pinned `requirements-dev.txt`, then
+  `ruff check`, `ruff format --check` and `pytest`. Unchanged.
 
 **`build-scan-push.yml`** — reusable (`workflow_call`), taking `service` (the
 directory under `apps/`) and `image` (the image name), and returning the pushed

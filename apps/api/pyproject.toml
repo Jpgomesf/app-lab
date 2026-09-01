@@ -2,9 +2,43 @@
 name = "api"
 version = "0.1.0"
 description = "HTTP API service"
-requires-python = ">=3.12"
-# Intentionally empty: the service is stdlib-only for now.
-dependencies = []
+requires-python = ">=3.12,<3.13"
+
+# Compatible ranges, not exact pins: uv.lock is the exact record and is
+# committed, so CI and local installs resolve identically. Renovate moves the
+# ranges; the lock moves with them.
+dependencies = [
+    "fastapi>=0.141.1,<0.142",
+    "uvicorn[standard]>=0.52.4,<0.53",
+    "pydantic-settings>=2.15.0,<3",
+    "sqlalchemy[asyncio]>=2.0.52,<2.1",
+    "asyncpg>=0.31.0,<0.32",
+    "alembic>=1.19.1,<2",
+    "opentelemetry-api>=1.44.0,<2",
+    "opentelemetry-sdk>=1.44.0,<2",
+    "opentelemetry-exporter-otlp>=1.44.0,<2",
+    # The instrumentation line versions independently of the core SDK
+    # (0.Nb0 tracks 1.N-16); they must be bumped as a pair.
+    "opentelemetry-instrumentation-fastapi>=0.65b0,<0.66",
+]
+
+[dependency-groups]
+dev = [
+    # Held to the same minor as requirements-dev.txt: `make lint` may run
+    # either this ruff or the root .venv one, and they must format alike.
+    "ruff>=0.16.5,<0.17",
+    "pytest>=9.1.1,<10",
+    "pytest-asyncio>=1.4.0,<2",
+    "httpx>=0.28.1,<0.29",
+    "pyright>=1.1.411,<2",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/api"]
 
 [tool.ruff]
 line-length = 100
@@ -18,4 +52,17 @@ select = ["E", "F", "I", "B", "UP", "N", "SIM"]
 # Keeps the src layout importable without an editable install.
 pythonpath = ["src"]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --strict-markers"
+asyncio_mode = "strict"
+markers = [
+    "integration: needs a real Postgres; skipped unless TEST_DATABASE_URL is set",
+]
+
+[tool.pyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+reportMissingImports = "error"
+venvPath = "."
+venv = ".venv"

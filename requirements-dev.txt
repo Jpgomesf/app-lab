@@ -1,3 +1,9 @@
 # Dev-only tooling, pinned so local runs and CI agree. Renovate keeps it current.
+#
+# uv is here because apps/api is a uv project: this is the version that wrote
+# apps/api/uv.lock and the one CI installs, so bump it and the lock together.
+# apps/api pulls its own ruff/pytest from uv.lock; these two serve mcp-server
+# and the repo-wide `ruff` pass, and the ruff pins must stay in step.
 ruff==0.16.5
 pytest==8.4.2
+uv==0.12.8
