@@ -15,6 +15,22 @@
   },
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 9am on monday"]
-  }
+    "schedule": [
+      "before 9am on monday"
+    ]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Keep the Dockerfile's UV_VERSION ARG in step with the uv pins in requirements-dev.txt and CI",
+      "managerFilePatterns": [
+        "/Dockerfile$/"
+      ],
+      "matchStrings": [
+        "ARG UV_VERSION=(?<currentValue>[0-9.]+)"
+      ],
+      "depNameTemplate": "uv",
+      "datasourceTemplate": "pypi"
+    }
+  ]
 }

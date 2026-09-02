@@ -15,7 +15,7 @@ ARG PYTHON_IMAGE=python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f
 FROM ${PYTHON_IMAGE} AS builder
 
 # Must match requirements-dev.txt: this is the uv that wrote uv.lock.
-ARG UV_VERSION=0.12.8
+ARG UV_VERSION=0.12.9
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_ROOT_USER_ACTION=ignore \
