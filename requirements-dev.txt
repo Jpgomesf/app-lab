@@ -5,5 +5,5 @@
 # apps/api pulls its own ruff/pytest from uv.lock; these two serve mcp-server
 # and the repo-wide `ruff` pass, and the ruff pins must stay in step.
 ruff==0.16.5
-pytest==8.4.2
+pytest==9.1.1
 uv==0.12.9
