@@ -10,10 +10,11 @@
   "pep621": {
     "enabled": true
   },
-  "uv": {
-    "enabled": true
-  },
   "dockerfile": {
     "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 9am on monday"]
   }
 }
