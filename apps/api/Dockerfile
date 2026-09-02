@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
 
-# Pinned by digest, not by tag: `python:3.12-slim` moves on every patch release
+# Pinned by digest, not by tag: `python:3.14-slim` moves on every patch release
 # and a digest is the only way a rebuild is the same build. This is the
 # manifest-list digest, so buildx still selects linux/amd64 from it.
 #
 # Re-resolve with:
-#   docker buildx imagetools inspect python:3.12-slim --format '{{.Manifest.Digest}}'
+#   docker buildx imagetools inspect python:3.14-slim --format '{{.Manifest.Digest}}'
 # Renovate's dockerfile manager keeps it current.
 ARG PYTHON_IMAGE=python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
 
@@ -19,7 +19,7 @@ ARG UV_VERSION=0.12.9
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_ROOT_USER_ACTION=ignore \
-    # Never fetch an interpreter: the base image's 3.12 is the one that ships.
+    # Never fetch an interpreter: the base image's 3.14 is the one that ships.
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \

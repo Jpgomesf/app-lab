@@ -135,7 +135,7 @@ src/api/
 ## Image
 
 Multi-stage: a builder installs `uv.lock` into `/opt/venv`, the runtime stage
-copies that venv onto a digest-pinned `python:3.12-slim` and runs as uid 65532.
+copies that venv onto a digest-pinned `python:3.14-slim` and runs as uid 65532.
 Nothing is written at runtime — no bytecode, no logs to disk, no temp files —
 which is what lets `readOnlyRootFilesystem: true` work with no `emptyDir`
 mounted anywhere. If that ever changes, the infra repo needs a writable volume
