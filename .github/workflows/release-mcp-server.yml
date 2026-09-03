@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   build:
-    uses: $/.github/workflows/build-scan-push.yml
+    uses: ./.github/workflows/build-scan-push.yml
     permissions:
       contents: read
       id-token: write # WIF only; unused while REGISTRY is unset
