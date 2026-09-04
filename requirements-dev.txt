@@ -4,6 +4,6 @@
 # apps/api/uv.lock and the one CI installs, so bump it and the lock together.
 # apps/api pulls its own ruff/pytest from uv.lock; these two serve mcp-server
 # and the repo-wide `ruff` pass, and the ruff pins must stay in step.
-ruff==0.16.5
+ruff==0.16.6
 pytest==9.1.1
 uv==0.12.9
