@@ -26,7 +26,7 @@ dependencies = [
 dev = [
     # Held to the same minor as requirements-dev.txt: `make lint` may run
     # either this ruff or the root .venv one, and they must format alike.
-    "ruff>=0.16.5,<0.17",
+    "ruff>=0.17.2,<0.18",
     "pytest>=9.1.1,<10",
     "pytest-asyncio>=1.4.0,<2",
     "httpx>=0.28.1,<0.29",
