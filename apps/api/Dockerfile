@@ -7,7 +7,7 @@
 # Re-resolve with:
 #   docker buildx imagetools inspect python:3.14-slim --format '{{.Manifest.Digest}}'
 # Renovate's dockerfile manager keeps it current.
-ARG PYTHON_IMAGE=python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
+ARG PYTHON_IMAGE=python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
 
 # --------------------------------------------------------------------------
 # builder: resolve dependencies from uv.lock into a self-contained venv
